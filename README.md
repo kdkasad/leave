@@ -18,7 +18,21 @@ main.rs
 
 # Install
 
-Install from Git sources using Cargo:
+There are three ways to install `leave`.
+
+## 1. Pre-built binaries
+You can download pre-built binaries from the [releases page].
+
+[releases page]: https://github.com/kdkasad/leave/releases
+
+## 2. From source (latest release)
+Install the latest release using Cargo:
+```
+$ cargo install leave
+```
+
+## 3. From source (Git)
+Install from the latest Git revision using Cargo:
 ```
 $ cargo install --git https://github.com/kdkasad/leave
 ```
