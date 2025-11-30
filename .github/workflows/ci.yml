@@ -87,6 +87,7 @@ jobs:
       contents: read
     env:
       RUSTFLAGS: ''
+      CARGO_TEST_TOOLS: cargo-nextest cargo-llvm-cov
     steps:
       - name: Check out sources
         uses: actions/checkout@v4
@@ -100,12 +101,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          cache-bin: false
 
-      - name: Install nextest (if not cached)
-        run: cargo nextest --version || cargo install --locked cargo-nextest
+      - name: Cache installed test tools
+        id: cargo-bin-cache
+        uses: actions/cache@v4
+        with:
+          key: cargo-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_TEST_TOOLS }}
+          path: ~/.cargo/bin
 
-      - name: Install llvm-cov (if not cached)
-        run: cargo llvm-cov --version || cargo install --locked cargo-llvm-cov
+      - name: Install test tools (if not cached)
+        if: ${{ steps.cargo-bin-cache.outputs.cache-hit != 'true' }}
+        run: cargo install --locked $CARGO_TEST_TOOLS
 
       - name: Run tests
         run: >-
