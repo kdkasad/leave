@@ -31,7 +31,7 @@ use clap::Parser;
 use eyre::{Context, bail};
 
 #[derive(Debug, Parser)]
-#[command(about)]
+#[command(about, author, version)]
 struct CliOptions {
     /// Files to leave present
     files: Vec<PathBuf>,
@@ -40,11 +40,11 @@ struct CliOptions {
     #[arg(long, short = 'C', value_name = "DIR")]
     chdir: Option<PathBuf>,
 
-    /// If set, will recursively delete directories
+    /// Recursively delete directories and their contents
     #[arg(long, short)]
     recursive: bool,
 
-    /// If set, will delete empty directories
+    /// Delete empty directories
     #[arg(long, short)]
     dirs: bool,
 
@@ -52,6 +52,8 @@ struct CliOptions {
     #[arg(long, short)]
     force: bool,
 }
+
+const MISTAKE_MSG: &str = "This is likely a mistake. To continue anyways, use -f/--force.";
 
 fn main() -> ExitCode {
     match main_fallible() {
@@ -80,7 +82,6 @@ fn main_fallible() -> eyre::Result<ExitCode> {
     // file.txt` but `file.txt` doesn't exist, it's probably a typo and we
     // shouldn't delete anything. The `-f, --force` flag overrides this.
     if !cli.force {
-        const MISTAKE_MSG: &str = "This is likely a mistake. To continue anyways, use -f/--force.";
         if cli.files.is_empty() {
             bail!("No files provided. {MISTAKE_MSG}");
         }
@@ -101,11 +102,17 @@ fn main_fallible() -> eyre::Result<ExitCode> {
     }
 
     // Get absolute paths to all arguments
+    let cwd_absolute =
+        std::path::absolute(".").wrap_err("Can't get path to current working directory")?;
     let absolute_files: HashSet<PathBuf> = cli
         .files
         .iter()
-        .map(|p| {
-            std::path::absolute(p).wrap_err_with(|| format!("Can't make {} absolute", p.display()))
+        .map(|p| -> eyre::Result<PathBuf> {
+            let abs_path = std::path::absolute(p).wrap_err_with(|| format!("Can't make {} absolute", p.display()))?;
+            if abs_path.parent().is_some_and(|parent| *parent != cwd_absolute) {
+                bail!("{} is not in the current directory; it would be removed anyways. {MISTAKE_MSG}", p.display())
+            }
+            Ok(abs_path)
         })
         .collect::<Result<_, _>>()?;
 

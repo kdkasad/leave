@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    process::Command,
+    process::{Command, Output, Stdio},
 };
 
 use pretty_assertions::assert_eq;
@@ -10,18 +10,20 @@ use crate::utils::TestTree;
 
 mod utils;
 
-fn run_and_expect(args: &[&str], exit_code: i32) {
+fn run_and_expect(args: &[&str], expected_exit_code: i32) -> Output {
     println!("Running command: leave {}", args.join(" "));
-    let code = Command::new(env!("CARGO_BIN_EXE_leave"))
+    let output = Command::new(env!("CARGO_BIN_EXE_leave"))
         .args(args)
-        .status()
-        .unwrap()
-        .code()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
         .unwrap();
+    let actual_exit_code = output.status.code().unwrap();
     assert_eq!(
-        exit_code, code,
-        "Expected exit code {exit_code}, got {code}"
+        expected_exit_code, actual_exit_code,
+        "Expected exit code {expected_exit_code}, got {actual_exit_code}"
     );
+    output
 }
 
 fn set<I, T>(args: I) -> HashSet<String>
@@ -175,4 +177,21 @@ pub fn continue_on_error() {
     tt.cd_into();
     run_and_expect(&["-f"], 1);
     assert_eq!(set(["c"]), tt.contents());
+}
+
+#[test]
+pub fn bail_on_nested_file() {
+    let tt = TestTree::new(json!({
+        "dir": {
+            "file": null
+        }
+    }));
+    tt.cd_into();
+    let output = run_and_expect(&["dir/file"], 1);
+    assert_eq!(set(["dir"]), tt.contents());
+    let stderr = str::from_utf8(&output.stderr).unwrap();
+    assert_eq!(
+        "Error: dir/file is not in the current directory; it would be removed anyways. This is likely a mistake. To continue anyways, use -f/--force.\n",
+        stderr
+    );
 }
