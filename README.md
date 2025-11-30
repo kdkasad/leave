@@ -1,6 +1,10 @@
 leave — Inverted rm(1) command
 ===
 
+[![GitHub Actions Workflow Status bagde](https://img.shields.io/github/actions/workflow/status/kdkasad/leave/ci.yml?logo=github&label=CI)](https://github.com/kdkasad/leave/actions/workflows/ci.yml)
+[![Codecov badge](https://img.shields.io/codecov/c/github/kdkasad/leave?logo=codecov&color=%23F01F7A)](https://app.codecov.io/gh/kdkasad/leave)
+[![License badge](https://img.shields.io/github/license/kdkasad/leave?color=blue)](COPYING)
+
 `leave` is an inverted `rm` command. It removes everything in the current directory except the files given as arguments.
 
 Example:
