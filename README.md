@@ -36,7 +36,7 @@ Options:
   -C, --chdir <DIR>  Run as if started in <DIR>
   -r, --recursive    Recursively delete directories and their contents
   -d, --dirs         Delete empty directories
-  -f, --force        Continue even if some files given on the command line don't exist
+  -f, --force        Don't check for arguments that are likely to be mistakes
   -h, --help         Print help
   -V, --version      Print version
 ```

@@ -48,7 +48,7 @@ struct CliOptions {
     #[arg(long, short)]
     dirs: bool,
 
-    /// Continue even if some files given on the command line don't exist
+    /// Don't check for arguments that are likely to be mistakes
     #[arg(long, short)]
     force: bool,
 }
