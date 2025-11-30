@@ -81,6 +81,11 @@ fn main_fallible() -> eyre::Result<()> {
     // file.txt` but `file.txt` doesn't exist, it's probably a typo and we
     // shouldn't delete anything. The `-f, --force` flag overrides this.
     if !cli.force {
+        const MISTAKE_MSG: &str = "This is likely a mistake. To continue anyways, use -f/--force.";
+        if cli.files.is_empty() {
+            bail!("No files provided. {MISTAKE_MSG}");
+        }
+
         let mut abort = false;
         for arg in &cli.files {
             let exists = arg
@@ -92,9 +97,7 @@ fn main_fallible() -> eyre::Result<()> {
             }
         }
         if abort {
-            bail!(
-                "One or more provided files don't exist. This is likely a mistake. To continue anyways, use -f/--force."
-            );
+            bail!("One or more provided files don't exist. {MISTAKE_MSG}");
         }
     }
 
