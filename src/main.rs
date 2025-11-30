@@ -21,7 +21,8 @@
 
 use std::{
     collections::HashSet,
-    fs,
+    fs::{self, DirEntry},
+    io::Error as IoError,
     path::{Path, PathBuf},
     process::ExitCode,
 };
@@ -53,22 +54,20 @@ struct CliOptions {
 }
 
 fn main() -> ExitCode {
-    if let Err(report) = main_fallible() {
-        eprint!("Error: ");
-        for (i, err) in report.chain().enumerate() {
-            let prefix = if i > 0 { ": " } else { "" };
-            eprint!("{prefix}{err}");
+    match main_fallible() {
+        Ok(code) => code,
+        Err(err) => {
+            print_error(&err);
+            ExitCode::FAILURE
         }
-        eprintln!();
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
     }
 }
 
 /// Wraps the actual error-prone logic so we can conveniently use `?` after
-/// errors
-fn main_fallible() -> eyre::Result<()> {
+/// errors.
+/// Returns `Ok(true)` if at least one error occurred while removing files, or
+/// `Ok(false)` if successful.
+fn main_fallible() -> eyre::Result<ExitCode> {
     let cli = CliOptions::parse();
 
     // Change directory to dir
@@ -112,30 +111,47 @@ fn main_fallible() -> eyre::Result<()> {
 
     // Do removal
     let cwd = fs::read_dir(".").wrap_err("Can't list contents of .")?;
+    let mut had_failure = false;
     for entry_result in cwd {
-        let entry = entry_result.wrap_err("Can't read directory entry")?;
-        let path = entry.path();
-        let print_path = path.display();
-
-        // Skip if matches one of the arguments
-        let entry_absolute = std::path::absolute(entry.path())
-            .wrap_err_with(|| format!("Can't make {print_path} absolute"))?;
-        if absolute_files.contains(&entry_absolute) {
-            continue;
+        if let Err(err) = process_entry(&cli, &absolute_files, entry_result) {
+            // If an error occurs, print it but don't abort
+            had_failure = true;
+            print_error(&err);
         }
-
-        let file_type = entry
-            .file_type()
-            .wrap_err_with(|| format!("Can't get type of {print_path}"))?;
-        let result: eyre::Result<()> = if file_type.is_dir() {
-            delete_dir(&cli, &entry.path())
-        } else {
-            fs::remove_file(entry.path()).map_err(eyre::Report::from)
-        };
-        result.wrap_err_with(|| format!("Can't remove {print_path}"))?;
     }
 
-    Ok(())
+    Ok(if had_failure {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
+}
+
+fn process_entry(
+    cli: &CliOptions,
+    absolute_files: &HashSet<PathBuf>,
+    entry_result: Result<DirEntry, IoError>,
+) -> eyre::Result<()> {
+    let entry = entry_result.wrap_err("Can't read directory entry")?;
+    let path = entry.path();
+    let print_path = path.display();
+
+    // Skip if matches one of the arguments
+    let entry_absolute = std::path::absolute(entry.path())
+        .wrap_err_with(|| format!("Can't make {print_path} absolute"))?;
+    if absolute_files.contains(&entry_absolute) {
+        return Ok(());
+    }
+
+    let file_type = entry
+        .file_type()
+        .wrap_err_with(|| format!("Can't get type of {print_path}"))?;
+    let result: eyre::Result<()> = if file_type.is_dir() {
+        delete_dir(cli, &entry.path())
+    } else {
+        fs::remove_file(entry.path()).map_err(eyre::Report::from)
+    };
+    result.wrap_err_with(|| format!("Can't remove {print_path}"))
 }
 
 /// Deletes a directory according to the CLI options given.
@@ -163,4 +179,16 @@ fn delete_dir(cli: &CliOptions, dir: &Path) -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+/// Prints the given error to standard error.
+///
+/// Prints the full cause chain in a single line, separated by colons.
+fn print_error(error: &eyre::Report) {
+    eprint!("Error: ");
+    for (i, err) in error.chain().enumerate() {
+        let prefix = if i > 0 { ": " } else { "" };
+        eprint!("{prefix}{err}");
+    }
+    eprintln!();
 }

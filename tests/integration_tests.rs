@@ -1,4 +1,7 @@
-use std::{collections::HashSet, process::Command};
+use std::{
+    collections::HashSet,
+    process::Command,
+};
 
 use pretty_assertions::assert_eq;
 use serde_json::json;
@@ -157,4 +160,19 @@ pub fn nonexistent_args_force() {
     tt.cd_into();
     run_and_expect(&["-f", "file2"], 0);
     assert!(tt.is_empty());
+}
+
+#[test]
+pub fn continue_on_error() {
+    let tt = TestTree::new(json!({
+        "a": null,
+        "b": null,
+        "c": {},
+        "d": null,
+        "e": null,
+        "f": null,
+    }));
+    tt.cd_into();
+    run_and_expect(&["-f"], 1);
+    assert_eq!(set(["c"]), tt.contents());
 }
