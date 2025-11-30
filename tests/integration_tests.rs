@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    path::Path,
     process::{Command, Output, Stdio},
 };
 
@@ -10,12 +11,13 @@ use crate::utils::TestTree;
 
 mod utils;
 
-fn run_and_expect(args: &[&str], expected_exit_code: i32) -> Output {
+fn run_and_expect(cwd: impl AsRef<Path>, args: &[&str], expected_exit_code: i32) -> Output {
     println!("Running command: leave {}", args.join(" "));
     let output = Command::new(env!("CARGO_BIN_EXE_leave"))
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .current_dir(cwd)
         .output()
         .unwrap();
     let actual_exit_code = output.status.code().unwrap();
@@ -41,8 +43,7 @@ pub fn just_files() {
         "file2": null,
         "file3": null,
     }));
-    tt.cd_into();
-    run_and_expect(&["file1"], 0);
+    run_and_expect(tt.path(), &["file1"], 0);
     assert_eq!(set(["file1"]), tt.contents());
 }
 
@@ -53,7 +54,7 @@ pub fn chdir() {
         "file2": null,
         "file3": null,
     }));
-    run_and_expect(&["-C", tt.path().to_str().unwrap(), "file1"], 0);
+    run_and_expect(".", &["-C", tt.path().to_str().unwrap(), "file1"], 0);
     assert_eq!(set(["file1"]), tt.contents());
 }
 
@@ -66,8 +67,7 @@ pub fn dirs() {
         "dir1": {},
         "dir2": {},
     }));
-    tt.cd_into();
-    run_and_expect(&["-d", "file1", "dir2"], 0);
+    run_and_expect(tt.path(), &["-d", "file1", "dir2"], 0);
     assert_eq!(set(["file1", "dir2"]), tt.contents());
 }
 
@@ -80,8 +80,7 @@ pub fn relative_paths() {
         "dir1": {},
         "dir2": {},
     }));
-    tt.cd_into();
-    run_and_expect(&["-d", "./file1", "./././dir1"], 0);
+    run_and_expect(tt.path(), &["-d", "./file1", "./././dir1"], 0);
     assert_eq!(set(["file1", "dir1"]), tt.contents());
 }
 
@@ -98,8 +97,7 @@ pub fn recursive() {
             "link1": "dir2"
         },
     }));
-    tt.cd_into();
-    run_and_expect(&["-r", "file1"], 0);
+    run_and_expect(tt.path(), &["-r", "file1"], 0);
     assert_eq!(set(["file1"]), tt.contents());
 }
 
@@ -118,8 +116,7 @@ pub fn recursive_without_flag() {
         },
         "dir3": {}
     }));
-    tt.cd_into();
-    run_and_expect(&["-d", "file1"], 1);
+    run_and_expect(tt.path(), &["-d", "file1"], 1);
     assert_eq!(set(["file1", "dir1"]), tt.contents());
 }
 
@@ -135,8 +132,7 @@ pub fn dirs_fail() {
             "file4": null
         },
     }));
-    tt.cd_into();
-    run_and_expect(&["file1", "dir2"], 1);
+    run_and_expect(tt.path(), &["file1", "dir2"], 1);
     let contents = tt.contents();
     assert!(contents.contains("dir1"));
     assert!(contents.contains("dir2"));
@@ -148,8 +144,7 @@ pub fn nonexistent_args() {
     let tt = TestTree::new(json!({
         "file1": null,
     }));
-    tt.cd_into();
-    run_and_expect(&["file2"], 1);
+    run_and_expect(tt.path(), &["file2"], 1);
     assert_eq!(set(["file1"]), tt.contents());
 }
 
@@ -159,8 +154,7 @@ pub fn nonexistent_args_force() {
     let tt = TestTree::new(json!({
         "file1": null,
     }));
-    tt.cd_into();
-    run_and_expect(&["-f", "file2"], 0);
+    run_and_expect(tt.path(), &["-f", "file2"], 0);
     assert!(tt.is_empty());
 }
 
@@ -174,8 +168,7 @@ pub fn continue_on_error() {
         "e": null,
         "f": null,
     }));
-    tt.cd_into();
-    run_and_expect(&["-f"], 1);
+    run_and_expect(tt.path(), &["-f"], 1);
     assert_eq!(set(["c"]), tt.contents());
 }
 
@@ -186,8 +179,7 @@ pub fn bail_on_nested_file() {
             "file": null
         }
     }));
-    tt.cd_into();
-    let output = run_and_expect(&["dir/file"], 1);
+    let output = run_and_expect(tt.path(), &["dir/file"], 1);
     assert_eq!(set(["dir"]), tt.contents());
     let stderr = str::from_utf8(&output.stderr).unwrap();
     assert_eq!(

@@ -47,15 +47,6 @@ impl TestTree {
         self.0.path()
     }
 
-    /// Changes the current directory to the temporary directory.
-    ///
-    /// # Panics
-    ///
-    /// Panics on error.
-    pub fn cd_into(&self) {
-        std::env::set_current_dir(self.0.path()).expect("Can't cd into temporary directory");
-    }
-
     /// Returns a set of the names of the directory's contents. Does not descend into directories.
     pub fn contents(&self) -> HashSet<String> {
         self.0
