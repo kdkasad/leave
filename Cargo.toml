@@ -18,10 +18,11 @@
 
 [package]
 name = "leave"
-version = "0.0.0"
+version = "0.1.0"
 description = "Inverted rm(1) command - Remove everything except the given files"
 repository = "https://github.com/kdkasad/leave"
 authors = ["Kian Kasad <kian@kasad.com>"]
+categories = ["command-line-utilities"]
 license = "GPL-3.0-or-later"
 edition = "2024"
 
