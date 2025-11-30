@@ -1,0 +1,177 @@
+#
+# Copyright (C) 2025 Kian Kasad <kian@kasad.com>
+#
+# This file is part of Leave.
+#
+# Leave is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
+#
+# Leave is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# Leave. If not, see <https://www.gnu.org/licenses/>.
+#
+
+name: CI
+run-name: |
+  ${{
+    format(
+      'CI pipeline for {0} by @{1}',
+      github.event_name == 'pull_request' && format('#{0}', github.event.number) || github.ref_name,
+      github.actor
+    )
+  }}
+
+on:
+  push:
+  pull_request:
+    branches:
+      - master
+      - "release/*"
+
+env:
+  RUST_BACKTRACE: short
+  RUSTFLAGS: '-D warnings'
+
+jobs:
+  clippy:
+    name: Lint code (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Lint code
+        run: cargo clippy --all-targets --workspace --locked
+
+  fmt:
+    name: Check formatting (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt --check --all
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
+    env:
+      RUSTFLAGS: ''
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache toolchain and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install nextest (if not cached)
+        run: cargo nextest --version || cargo install --locked cargo-nextest
+
+      - name: Install llvm-cov (if not cached)
+        run: cargo llvm-cov --version || cargo install --locked cargo-llvm-cov
+
+      - name: Run tests
+        run: >-
+          cargo llvm-cov nextest
+          --no-report
+          --no-fail-fast
+          --locked
+          --workspace
+          --all-targets
+          --all-features
+          --profile ci
+
+      - name: Generate coverage reports
+        if: ${{ !cancelled() }} # Generate reports even if tests failed
+        shell: bash
+        run: |
+          cargo llvm-cov report --html
+          cargo llvm-cov report --codecov --output-path target/llvm-cov/codecov.json
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: ${{ !cancelled() }} # Upload reports even if tests failed
+        with:
+          check_run: false
+          comment_mode: ${{ (github.event_name == 'pull_request') && 'always' || 'off' }}
+          files: |
+            target/nextest/ci/junit.xml
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }} # Upload reports even if tests failed
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: target/nextest/ci/junit.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        if: ${{ !cancelled() }} # Upload reports even if tests failed
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/llvm-cov/codecov.json
+          fail_ci_if_error: true
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }} # Upload reports even if tests failed
+        with:
+          name: coverage-html
+          path: target/llvm-cov/html/
+
+  # Adding this because we don't want to run the whole build workflow on each
+  # push
+  build:
+    name: Build project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Compile project
+        run: cargo build --workspace --all-targets --all-features --release --locked

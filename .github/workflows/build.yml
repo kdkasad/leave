@@ -1,0 +1,142 @@
+#
+# Copyright (C) 2025 Kian Kasad <kian@kasad.com>
+#
+# This file is part of Leave.
+#
+# Leave is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
+#
+# Leave is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# Leave. If not, see <https://www.gnu.org/licenses/>.
+#
+
+name: Build CLI binaries
+
+on:
+  workflow_call:
+  pull_request:
+    branches:
+      - master
+      - 'release/*'
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - 'release/*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: leave-x86_64-windows.exe
+
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            artifact: leave-i686-windows.exe
+
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact: leave-aarch64-windows.exe
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: leave-x86_64-macos
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: leave-aarch64-macos
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: leave-x86_64-linux-gnu
+
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: leave-aarch64-linux-gnu
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            artifact: leave-armv7hf-linux-gnu
+            use-cross: true
+
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: leave-x86_64-linux-musl
+
+    steps:
+      - name: Install musl-gcc
+        if: ${{ contains(matrix.target, 'musl') }}
+        run: sudo apt-get install musl-tools
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Compile
+        if: ${{ matrix.use-cross != true }}
+        run: cargo build --target ${{ matrix.target }} --release --locked
+
+      - name: Install cross (if not cached)
+        if: ${{ matrix.use-cross == true }}
+        run: cross || cargo install cross
+
+      - name: Compile (using cross)
+        if: ${{ matrix.use-cross == true }}
+        run: cross build --target ${{ matrix.target }} --release --locked
+
+      - name: Rename binary for target
+        id: rename
+        env:
+          SRC: ${{ format(
+              'target/{0}/release/leave{1}',
+              matrix.target,
+              contains(matrix.os, 'windows') && '.exe' || ''
+            ) }}
+          DST: ${{ format('target/{0}/release/{1}', matrix.target, matrix.artifact) }}
+        shell: bash
+        run: |
+          mv "$SRC" "$DST"
+          echo "path=$DST" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.rename.outputs.path }}
+
+      - name: Upload archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ steps.rename.outputs.path }}
